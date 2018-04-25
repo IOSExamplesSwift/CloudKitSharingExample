@@ -251,6 +251,36 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
         }
     }
     
+    @IBAction func shareRecord(_ sender: Any) {
+        let controller = UICloudSharingController { controller, preparationCompletionHandler in
+            if let thisRecord = self.currentRecord {
+                let share = CKShare(rootRecord: thisRecord)
+                share[CKShareTitleKey] = "An Amazing House" as CKRecordValue
+                share.publicPermission = .readOnly
+                
+                let modiyRecordsOperation = CKModifyRecordsOperation(recordsToSave: [thisRecord, share], recordIDsToDelete: nil)
+                
+                let configuration = CKOperationConfiguration()
+                configuration.timeoutIntervalForRequest = 10
+                configuration.timeoutIntervalForResource = 10
+                
+                modiyRecordsOperation.modifyRecordsCompletionBlock = { records, recordIDs, error in
+                    if let err = error {
+                        print(err.localizedDescription)
+                    }
+                    preparationCompletionHandler(share,CKContainer.default(), error)
+                }
+                self.privateDatabase?.add(modiyRecordsOperation)
+            } else {
+                print("User error: No recod selecte")
+            }
+            
+        }
+        controller.availablePermissions = [.allowPublic, .allowReadOnly, .allowReadWrite, .allowPrivate]
+        controller.popoverPresentationController?.barButtonItem = sender as? UIBarButtonItem
+        present(controller, animated: true, completion: nil)
+    }
+    
     // hide the keyboard
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         addressField.endEditing(true)
@@ -284,6 +314,37 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
         }
         
         return fileURL
+    }
+    
+    func fetchShare(_ metadata: CKShareMetadata) {
+        // construct an with the recordID and completion block
+        let operation = CKFetchRecordsOperation(recordIDs: [metadata.rootRecordID])
+        operation.perRecordCompletionBlock = { record, _, error in
+            if let err = error {
+                print(err.localizedDescription)
+            }
+            
+            if record != nil {
+                // display to user
+                DispatchQueue.main.async() {
+                    self.currentRecord = record
+                    self.addressField.text = record?.object(forKey: "address") as? String
+                    self.commentsField.text = record?.object(forKey: "commen") as? String
+                    let photo = record?.object(forKey: "photo") as! CKAsset
+                    let image = UIImage(contentsOfFile: photo.fileURL.path)
+                    self.imageView.image = image
+                    self.photoURL = self.saveImageToFile(image!)
+                }
+            }
+        }
+        
+        operation.fetchRecordsCompletionBlock = {_ , error in
+            if let err = error {
+                print(err.localizedDescription)
+            }
+        }
+        
+        CKContainer.default().sharedCloudDatabase.add(operation)
     }
     
     //MARK: user notification method
